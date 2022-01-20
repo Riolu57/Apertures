@@ -1,0 +1,56 @@
+{
+    "folders": [
+        {
+            "name": "VSCode",
+            "path": "."
+        },
+        {
+            "name": "Tests",
+            "path": "../Tests"
+        },
+        {
+            "name": "Conceptor",
+            "path": "../Conceptor"
+        }
+    ],
+
+    "settings": {
+        "editor.rulers": [120],
+        "files.autoSave": "afterDelay",
+        "files.autoSaveDelay": 1000,
+        "python.analysis.typeCheckingMode": "strict",
+        "python.analysis.autoImportCompletions": true,
+        "python.linting.pycodestyleEnabled": false,
+        "editor.bracketPairColorization.enabled": true,
+        "editor.guides.bracketPairs":"active",
+        "python.analysis.diagnosticSeverityOverrides": {
+            "reportUnknownMemberType": "none",
+            "reportUnknownVariableType": "none",
+            "reportUnknownArgumentType": "none",
+            "reportUnknownParameterType": "none"
+        },
+        
+        "python.testing.unittestArgs": [
+            "-v",
+            "-s",
+            "../Conceptor/Tests",
+            "-p",
+            "*_test.py"
+        ],
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false
+        
+    },
+
+    "launch": {
+        "configurations":[
+            {
+            "name": "Python: Aktuelle Datei",
+            "type": "python",
+            "request": "launch",
+            "program": "U:/Year 3/Bachelors_Project/Aperture/Conceptor/conceptor.py",
+            "console": "integratedTerminal"
+            }
+        ],
+    }
+}
