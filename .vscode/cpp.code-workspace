@@ -48,7 +48,7 @@
             "name": "Python: Aktuelle Datei",
             "type": "python",
             "request": "launch",
-            "program": "U:/Year 3/Bachelors_Project/Aperture/Conceptor/conceptor.py",
+            "program": "U:/Year 3/Bachelors_Project/Apertures/Conceptor/conceptor.py",
             "console": "integratedTerminal"
             }
         ],
