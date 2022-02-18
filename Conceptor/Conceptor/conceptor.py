@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 class Conceptor:
@@ -13,7 +14,9 @@ class Conceptor:
         # Length of signal and records
         self.L = 2001
         # For signal and plotting purposes
-        self.space = np.linspace(-200, 200, self.L)
+        self.start = -200
+        self.end = 200
+        self.space = np.linspace(self.start, self.end, self.L)
         # Generated signals
         self.sig = [
             np.sin(np.sqrt(2)*self.space),
@@ -155,7 +158,7 @@ class Conceptor:
 
         # For each record
         for response in self.state_response:
-            # Create X_i by deleting the initial state x_-1
+            # Create X_i by deleting the initial state x_-1 and the washout
             x_i = np.delete(response, slice(self.washout + 1), 1)
             # Add X_i to the result
             res.append(x_i)
@@ -200,6 +203,33 @@ class Conceptor:
             res.append(temp)
 
         return res
+
+    def run_sig_with_conc(self, idx: int):
+        """
+        Runs the network with a conceptor and loaded matrix for the duration of the signal.
+        Tries to regenerate the original signal whose index was given.
+
+        :param idx: The index of the signal that should be regenerated.
+        :return: Array with the regenerated signal saved.
+        """
+
+        if self.conceptors == list():
+            self.compute_conceptors()
+
+        # Reset x
+        self.x = np.zeros((self.n, 1))
+
+        # For storage
+        res = np.zeros((1, 1))
+
+        # For each signal value
+        for _ in self.sig[idx]:
+            # Step once
+            self.run_with_conceptor(idx)
+            # And add the result to res
+            res = np.concatenate((res, self.out()), axis=0)
+
+        return np.delete(res, 0, 0)
 
     def load_patterns(self) -> None:
         """
@@ -255,6 +285,67 @@ class Conceptor:
             conceptor = r@np.linalg.inv(r + scaled_id)
             self.conceptors.append(conceptor)
 
+    @staticmethod
+    def nrmse(p: np.ndarray, o: np.ndarray) -> float:
+        """
+        Computes the normalised root mean squared error.
+
+        :param p: The predicted signal.
+        :param o: The observed signal.
+        :return: The NRMSE between p and o.
+        """
+        if p.shape != o.shape:
+            raise ValueError
+
+        return np.sqrt(sum((p - o)**2)/max(p.shape))/(max(o) - min(o))
+
+    def shift_max(self, org: np.ndarray, imi: np.ndarray, freq=1) -> np.ndarray:
+        """
+        Shifts imi such that the maxima of org and imi are at the same index.
+        Supposed to eliminate phase shifting.
+
+        :param org: The original signal.
+        :param imi: The imitated signal.
+        :return: A shifted numpy array.
+        """
+        sample_freq = (self.L - 1)/(self.end - self.start)
+        reg = int(sample_freq*freq*2*np.pi) + 1
+
+        # Find max in first region
+        fm = np.where(org[:reg] == max(org[:reg]))[0]
+        sm = np.where(imi[:reg] == max(imi[:reg]))[0]
+
+        ph_dif = np.abs(fm - sm)[0]
+        return np.delete(imi, slice(ph_dif))
+
+    def regenerate_signals(self):
+        """
+        Regenerates all signals using W_out and recorded state matricies.
+
+        :return: List containing all signals to the original signal.
+        """
+        if self.state_response is None:
+            self.save_state_response()
+
+        # To save the signals
+        reg_sig = list()
+
+        # For each signal
+        for response in self.state_response:
+            # Initialize a temporary variable
+            temp_reg_sig = np.zeros(1)
+
+            # For each recorded state
+            for j in range(response.shape[1]):
+                # Record in temp_reg_sig
+                temp_reg_sig = np.concatenate((temp_reg_sig, self.Wout@response[:, j]), axis=0)
+
+            # Delete two 0 states; One from temp_reg_sig init and one from the response
+            temp_reg_sig = np.delete(temp_reg_sig, slice(0, 2), 0)
+            reg_sig.append(temp_reg_sig)
+
+        return reg_sig
+
     def drive(self, p: (int | float)) -> None:
         """
         Computes the next state based on a driver/signal and the initial connection matrix.
@@ -289,6 +380,63 @@ class Conceptor:
         """
         return self.Wout@self.x
 
+    def vis_conceptor(self):
+        res_2 = self.regenerate_signals()
+        res_3 = self.create_x_i()
+        rs = self.create_r_i()
+
+        # Conceptor output vs original signal
+        ax = plt.subplot(2, 2, 1)
+        pacing = 501
+        space = np.linspace(100, 200, pacing)
+        y1 = res_2[1][self.L - pacing:]
+        y2 = self.sig[1][self.L - pacing:]
+        temp = self.shift_max(self.sig[1], self.run_sig_with_conc(1))
+        y3 = temp[temp.shape[0] - pacing:]
+        ax.plot(space, y1, label="W_out", linestyle='dashed', color="black")
+        ax.plot(space, y2, label="Signal", color="grey", alpha=0.6)
+        ax.plot(space, y3, label="Conceptor", color="blue", alpha=0.5, linestyle="dashdot")
+        nrmse1 = self.nrmse(y1.reshape(y1.shape[0], 1), y2.reshape(y2.shape[0], 1))
+        nrmse2 = self.nrmse(y3.reshape(y3.shape[0], 1), y2.reshape(y2.shape[0], 1))
+        ax.set_title("Signal")
+        textstr = f"NRMSE out/sig: {round(float(nrmse1), 3)}\nNRMSE con/sig {round(float(nrmse2), 3)}"
+        props = dict(boxstyle='round', facecolor='grey', alpha=0.5)
+        ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=14,
+                verticalalignment='top', bbox=props)
+        ax.legend()
+
+        # Singular values enegrgy
+        u, Sv, v = np.linalg.svd(self.conceptors[1], compute_uv=True, hermitian=True)
+        u2, Sv2, v2 = np.linalg.svd(rs[1], compute_uv=True, hermitian=True)
+        # print(Sv)
+        ax1 = plt.subplot(2, 2, 2)
+        ax1.plot(np.linspace(1, len(Sv), len(Sv)), Sv, label="Singular Values C")
+        ax1.bar(np.linspace(1, len(Sv), len(Sv)), Sv - (Sv2 / (Sv2 + 10 ** -2)),
+                label="Difference to predicted values")
+        ax1.set_title("Singular values of C")
+        ax1.legend()
+
+        # Driven Neuron vs original signal
+        ax2 = plt.subplot(2, 2, 3)
+        temp = np.delete(self.state_response[1], 0, 1)
+        ax2.plot(space, temp[0][self.L - pacing:], label="Neuron")
+        ax2.plot(space, self.sig[1][self.L - pacing:], label="Signal")
+        ax2.set_title("Neuron driven by signal")
+        ax2.legend()
+
+        # Plot difference in state activation over time
+        # norm_cor = np.corrcoef(self.state_response[1], res_3[1])[0, 1]
+        # ax3 = plt.subplot(2, 2, 4)
+        # ax3.plot(np.linspace(1, len(self.state_response[1][0][:]), len(self.state_response[1][0][:])), self.state_response[1][0][:],
+        #          label="Normal activation")
+        # ax3.plot(np.linspace(1, len(res_3[1][0][:]), len(res_3[1][0][:])), res_3[1][0][:],
+        #          label="Conceptor activation")
+        # ax3.set_title(f"State Activation Difference. cor: {norm_cor}")
+        # ax3.legend()
+
+        plt.show()
+
 
 if __name__ == "__main__":
     C = Conceptor()
+    C.vis_conceptor()
