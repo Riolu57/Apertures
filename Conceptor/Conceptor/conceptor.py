@@ -114,14 +114,16 @@ class Conceptor:
         :return: None.
         """
         # Initialise P as a one-dimensional matrix without the washout period.
-        self.P = np.asarray(self.sig[0])[self.washout:]
+        # [self.washout:]
+        self.P = np.asarray(self.sig[0])
         # Initialise the results as a list
         res = list()
 
         # For each other signal
         for i in range(1, len(self.sig)):
             # Add the signal without the washout period to P
-            self.P = np.concatenate((self.P, np.asarray(self.sig[i])[self.washout:]), axis=0)
+            # [self.washout:]
+            self.P = np.concatenate((self.P, np.asarray(self.sig[i])), axis=0)
 
         # For each signal
         for sig in self.sig:
@@ -159,7 +161,8 @@ class Conceptor:
         # For each record
         for response in self.state_response:
             # Create X_i by deleting the initial state x_-1 and the washout
-            x_i = np.delete(response, slice(self.washout + 1), 1)
+            # self.washout +
+            x_i = np.delete(response, slice(1), 1)
             # Add X_i to the result
             res.append(x_i)
 
@@ -180,9 +183,9 @@ class Conceptor:
         # For each record
         for response in self.state_response:
             # Delete washout period
-            temp = np.delete(response, slice(self.washout), 1)
+            # temp = np.delete(response, slice(self.washout), 1)
             # Create X_tilde_i by deleting the last state x_L
-            temp = np.delete(temp, slice(temp.shape[1] - 1, temp.shape[1]), 1)
+            temp = np.delete(response, slice(response.shape[1] - 1, response.shape[1]), 1)
             # Add X_tilde_i to res
             res.append(temp)
 
@@ -199,12 +202,13 @@ class Conceptor:
 
         # Create R_i
         for x in self.create_x_i():
-            temp = (x@x.T)/(self.L - self.washout)
+            #  - self.washout
+            temp = (x@x.T)/self.L
             res.append(temp)
 
         return res
 
-    def run_sig_with_conc(self, idx: int):
+    def reg_sig_with_conc(self, idx: int):
         """
         Runs the network with a conceptor and loaded matrix for the duration of the signal.
         Tries to regenerate the original signal whose index was given.
@@ -230,6 +234,27 @@ class Conceptor:
             res = np.concatenate((res, self.out()), axis=0)
 
         return np.delete(res, 0, 0)
+
+    def reg_sig_with_conc_not_loaded(self, idx):
+        """
+        Regenerates the state response with a conceptor and returns a concatenated matrix with all values.
+
+        :param idx: The index of the response to recreate.
+        :return: A matrix containing the regenerated states.
+        """
+        if self.conceptors is None:
+            self.compute_conceptors()
+
+        x = np.zeros((self.n, 1))
+        rec = np.zeros((1, 1))
+
+        for val in self.sig[idx]:
+            # Step once
+            x = self.conceptors[idx]@np.tanh(self.Wstar@x + self.Win*val + self.b)
+            # Rec new state
+            rec = np.concatenate((rec, self.Wout@x), axis=0)
+
+        return np.delete(rec, 0, 0)
 
     def load_patterns(self) -> None:
         """
@@ -257,14 +282,14 @@ class Conceptor:
 
         :return: None.
         """
-        # Get x and x_tilde
+        # Get x, x_tilde and r
         x_tilde = np.concatenate(self.create_x_tilde_i(), axis=1)
         x = np.concatenate(self.create_x_i(), axis=1)
 
         # Create the components of the formula
-        r = x_tilde@x_tilde.T
-        scaled_identity = 0.0001*np.identity(self.n)
-        inv = np.linalg.inv(r + scaled_identity)
+        x_sq = x_tilde@x_tilde.T
+        scaled_identity = 0.001*np.identity(self.n)
+        inv = np.linalg.inv(x_sq + scaled_identity)
         bias_matrix = np.tile(self.b, (1, x_tilde.shape[1]))
         rhs = np.arctanh(x) - bias_matrix
 
@@ -299,17 +324,18 @@ class Conceptor:
 
         return np.sqrt(sum((p - o)**2)/max(p.shape))/(max(o) - min(o))
 
-    def shift_max(self, org: np.ndarray, imi: np.ndarray, freq=1) -> np.ndarray:
+    def shift_max(self, org: np.ndarray, imi: np.ndarray, freq: float = 1) -> np.ndarray:
         """
         Shifts imi such that the maxima of org and imi are at the same index.
         Supposed to eliminate phase shifting.
 
         :param org: The original signal.
         :param imi: The imitated signal.
+        :param freq: The frequency of the signal.
         :return: A shifted numpy array.
         """
         sample_freq = (self.L - 1)/(self.end - self.start)
-        reg = int(sample_freq*freq*2*np.pi) + 1
+        reg = int(sample_freq/freq*2*np.pi) + 1
 
         # Find max in first region
         fm = np.where(org[:reg] == max(org[:reg]))[0]
@@ -387,19 +413,25 @@ class Conceptor:
 
         # Conceptor output vs original signal
         ax = plt.subplot(2, 2, 1)
-        pacing = 501
-        space = np.linspace(100, 200, pacing)
-        y1 = res_2[1][self.L - pacing:]
-        y2 = self.sig[1][self.L - pacing:]
-        temp = self.shift_max(self.sig[1], self.run_sig_with_conc(1))
-        y3 = temp[temp.shape[0] - pacing:]
+        pacing = self.L
+        # np.linspace(100, 200, pacing)
+        space = self.space
+        # [self.L - pacing:]
+        y1 = res_2[1]
+        y2 = self.sig[1]
+        # temp = self.shift_max(self.sig[1], self.reg_sig_with_conc(1))
+        y3 = self.reg_sig_with_conc(1)
+        y4 = self.reg_sig_with_conc_not_loaded(1)
         ax.plot(space, y1, label="W_out", linestyle='dashed', color="black")
         ax.plot(space, y2, label="Signal", color="grey", alpha=0.6)
         ax.plot(space, y3, label="Conceptor", color="blue", alpha=0.5, linestyle="dashdot")
+        ax.plot(space, y4, label="Unloaded Conceptor", color="green", alpha=0.5)
         nrmse1 = self.nrmse(y1.reshape(y1.shape[0], 1), y2.reshape(y2.shape[0], 1))
         nrmse2 = self.nrmse(y3.reshape(y3.shape[0], 1), y2.reshape(y2.shape[0], 1))
+        nrmse3 = self.nrmse(y4.reshape(y4.shape[0], 1), y2.reshape(y2.shape[0], 1))
         ax.set_title("Signal")
-        textstr = f"NRMSE out/sig: {round(float(nrmse1), 3)}\nNRMSE con/sig {round(float(nrmse2), 3)}"
+        textstr = f"NRMSE out/sig: {round(float(nrmse1), 3)}\nNRMSE con/sig {round(float(nrmse2), 3)}\nNRMSE unloaded/"\
+            + f"sig {round(float(nrmse3), 3)}"
         props = dict(boxstyle='round', facecolor='grey', alpha=0.5)
         ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=14,
                 verticalalignment='top', bbox=props)
