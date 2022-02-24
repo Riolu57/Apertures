@@ -1,3 +1,5 @@
+from functools import cache
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -10,6 +12,9 @@ class Conceptor:
     TODO: Add variable n
     TODO: Add variable signals
     """
+    __slots__ = ("L", "start", "end", "space", "sig", "n", "washout", "P", "x", "Win", "Wout", "Wstar", "W", "b",
+                 "state_response", "conceptors", "alpha")
+
     def __init__(self):
         # Length of signal and records
         self.L = 2001
@@ -19,10 +24,8 @@ class Conceptor:
         self.space = np.linspace(self.start, self.end, self.L)
         # Generated signals
         self.sig = [
-            np.sin(np.sqrt(2)*self.space),
-            np.sin(self.space),
-            np.sin(2*self.space),
-            np.sin(3*self.space)
+            np.asarray([0 for _ in range(self.L)]),
+            np.asarray([(i % 5)/5 for i in range(self.L)])
         ]
 
         # Amount of Neurons
@@ -456,15 +459,25 @@ class Conceptor:
         ax2.set_title("Neuron driven by signal")
         ax2.legend()
 
-        # Plot difference in state activation over time
-        # norm_cor = np.corrcoef(self.state_response[1], res_3[1])[0, 1]
-        # ax3 = plt.subplot(2, 2, 4)
-        # ax3.plot(np.linspace(1, len(self.state_response[1][0][:]), len(self.state_response[1][0][:])), self.state_response[1][0][:],
-        #          label="Normal activation")
-        # ax3.plot(np.linspace(1, len(res_3[1][0][:]), len(res_3[1][0][:])), res_3[1][0][:],
-        #          label="Conceptor activation")
-        # ax3.set_title(f"State Activation Difference. cor: {norm_cor}")
-        # ax3.legend()
+        # Display tanh(W^*_i x^j(n) + W^in_i p^j(n + 1) + b_i) \approx tanh(W_i x^j(n) + b_i)
+        ax3 = plt.subplot(2, 2, 4)
+        diffs = list()
+        for resp in range(len(self.state_response)):
+            diff = np.zeros((1, 1))
+            for idx in range(self.sig[resp].shape[0]):
+                x = self.state_response[resp][:, idx]
+                p = self.P[resp*self.L + idx]
+                temp = np.sum(np.tanh(self.Wstar@x + self.Win*p + self.b) - np.tanh(self.W@x + self.b)).reshape((1, 1))
+                diff = np.concatenate((diff, temp), axis=0)
+            diffs.append(diff.reshape((1, diff.shape[0])))
+
+        col = ['red', 'blue', 'yellow', 'pink', 'cyan', 'orange']
+        data = np.concatenate(diffs, axis=0)
+        X = np.arange(data.shape[1])
+        for i in range(data.shape[0]):
+            ax3.bar(X, data[i], bottom=np.sum(data[:i],
+                                              axis=0), color=col[i % len(col)])
+        ax3.hlines(np.mean(data), 0, self.L)
 
         plt.show()
 
