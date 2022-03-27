@@ -1,5 +1,3 @@
-from functools import cache
-
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -24,8 +22,10 @@ class Conceptor:
         self.space = np.linspace(self.start, self.end, self.L)
         # Generated signals
         self.sig = [
-            np.asarray([0 for _ in range(self.L)]),
-            np.asarray([(i % 5)/5 for i in range(self.L)])
+            np.sin(np.sqrt(2)*self.space),
+            np.sin(self.space),
+            np.sin(2*self.space),
+            np.sin(3*self.space)
         ]
 
         # Amount of Neurons
@@ -117,16 +117,14 @@ class Conceptor:
         :return: None.
         """
         # Initialise P as a one-dimensional matrix without the washout period.
-        # [self.washout:]
-        self.P = np.asarray(self.sig[0])
+        self.P = np.asarray(self.sig[0])[self.washout:]
         # Initialise the results as a list
         res = list()
 
         # For each other signal
         for i in range(1, len(self.sig)):
             # Add the signal without the washout period to P
-            # [self.washout:]
-            self.P = np.concatenate((self.P, np.asarray(self.sig[i])), axis=0)
+            self.P = np.concatenate((self.P, np.asarray(self.sig[i])[self.washout:]), axis=0)
 
         # For each signal
         for sig in self.sig:
@@ -164,8 +162,7 @@ class Conceptor:
         # For each record
         for response in self.state_response:
             # Create X_i by deleting the initial state x_-1 and the washout
-            # self.washout +
-            x_i = np.delete(response, slice(1), 1)
+            x_i = np.delete(response, slice(self.washout + 1), 1)
             # Add X_i to the result
             res.append(x_i)
 
@@ -186,9 +183,9 @@ class Conceptor:
         # For each record
         for response in self.state_response:
             # Delete washout period
-            # temp = np.delete(response, slice(self.washout), 1)
+            temp = np.delete(response, slice(self.washout), 1)
             # Create X_tilde_i by deleting the last state x_L
-            temp = np.delete(response, slice(response.shape[1] - 1, response.shape[1]), 1)
+            temp = np.delete(temp, slice(temp.shape[1] - 1, temp.shape[1]), 1)
             # Add X_tilde_i to res
             res.append(temp)
 
@@ -205,8 +202,7 @@ class Conceptor:
 
         # Create R_i
         for x in self.create_x_i():
-            #  - self.washout
-            temp = (x@x.T)/self.L
+            temp = (x@x.T)/(self.L - self.washout)
             res.append(temp)
 
         return res
@@ -411,7 +407,6 @@ class Conceptor:
 
     def vis_conceptor(self):
         res_2 = self.regenerate_signals()
-        res_3 = self.create_x_i()
         rs = self.create_r_i()
 
         # Conceptor output vs original signal
@@ -440,6 +435,8 @@ class Conceptor:
                 verticalalignment='top', bbox=props)
         ax.legend()
 
+        del y1, y2, y3, y4, nrmse1, nrmse2, nrmse3, textstr, props
+
         # Singular values enegrgy
         u, Sv, v = np.linalg.svd(self.conceptors[1], compute_uv=True, hermitian=True)
         u2, Sv2, v2 = np.linalg.svd(rs[1], compute_uv=True, hermitian=True)
@@ -451,6 +448,8 @@ class Conceptor:
         ax1.set_title("Singular values of C")
         ax1.legend()
 
+        del u, Sv, v, u2, Sv2, v2
+
         # Driven Neuron vs original signal
         ax2 = plt.subplot(2, 2, 3)
         temp = np.delete(self.state_response[1], 0, 1)
@@ -459,14 +458,16 @@ class Conceptor:
         ax2.set_title("Neuron driven by signal")
         ax2.legend()
 
+        del temp
+
         # Display tanh(W^*_i x^j(n) + W^in_i p^j(n + 1) + b_i) \approx tanh(W_i x^j(n) + b_i)
         ax3 = plt.subplot(2, 2, 4)
         diffs = list()
         for resp in range(len(self.state_response)):
             diff = np.zeros((1, 1))
-            for idx in range(self.sig[resp].shape[0]):
-                x = self.state_response[resp][:, idx]
-                p = self.P[resp*self.L + idx]
+            for idx in range(self.sig[resp].shape[0] - self.washout):
+                x = self.state_response[resp][:, self.washout + idx]
+                p = self.P[resp*(self.L - self.washout) + idx]
                 temp = np.sum(np.tanh(self.Wstar@x + self.Win*p + self.b) - np.tanh(self.W@x + self.b)).reshape((1, 1))
                 diff = np.concatenate((diff, temp), axis=0)
             diffs.append(diff.reshape((1, diff.shape[0])))
@@ -479,8 +480,9 @@ class Conceptor:
                                               axis=0), color=col[i % len(col)])
         ax3.hlines(np.mean(data), 0, self.L)
 
-        plt.show()
+        del diffs, diff, x, p, temp, col, data, X
 
+        plt.show()
 
 if __name__ == "__main__":
     C = Conceptor()
