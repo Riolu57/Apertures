@@ -37,7 +37,7 @@ class TestConceptor(ConceptorTestBase):
             self.assertTrue(self.errors(res[i], resp, acc=2))
 
     def test_shape(self) -> None:
-        # Assert that the Conceptor is of shape
+        # Assert that the Conceptors is of shape
         for conceptor in self.C.conceptors:
             self.assertEqual(conceptor.shape, (self.C.n, self.C.n))
 

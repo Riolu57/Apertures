@@ -1,5 +1,5 @@
 import unittest
-from Conceptor import conceptor
+from Conceptors import conceptor
 import numpy as np
 
 

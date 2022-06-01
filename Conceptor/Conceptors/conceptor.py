@@ -1,43 +1,41 @@
+
 import numpy as np
 import matplotlib.pyplot as plt
 
 
 class Conceptor:
     """
-    This class implements a basic Conceptor Matrix based on an RNN that receives pre-defined Signals, saves them
+    This class implements a basic Conceptors Matrix based on an RNN that receives pre-defined Signals, saves them
     in an RNN's connection Matrix and then reproduces the original signals using Conceptors.
 
     TODO: Add variable n
     TODO: Add variable signals
     """
     __slots__ = ("L", "start", "end", "space", "sig", "n", "washout", "P", "x", "Win", "Wout", "Wstar", "W", "b",
-                 "state_response", "conceptors", "alpha")
+                 "state_response", "conceptors", "alpha", "dim")
 
-    def __init__(self):
+    def __init__(self, signals, /, *, n=100, washout=100, aperture=10, plot_start=0, plot_end=100, max_length=100,
+                 dim=1):
         # Length of signal and records
-        self.L = 2001
+        self.L = max_length
         # For signal and plotting purposes
-        self.start = -200
-        self.end = 200
+        self.start = plot_start
+        self.end = plot_end
         self.space = np.linspace(self.start, self.end, self.L)
         # Generated signals
-        self.sig = [
-            np.sin(np.sqrt(2)*self.space),
-            np.sin(self.space),
-            np.sin(2*self.space),
-            np.sin(3*self.space)
-        ]
-
+        self.sig = signals
         # Amount of Neurons
-        self.n = 100
+        self.n = n
+        # Output dimensions
+        self.dim = dim
         # Washout period
-        self.washout = 500
+        self.washout = washout
         # Signals over time
         self.P = None
         # Current state activation
         self.x = np.zeros((self.n, 1))
         # Input weights
-        self.Win = 1.5*(np.random.normal(0, 1, (self.n, 1)))
+        self.Win = 1.5*(np.random.normal(0, 1, (self.n, dim)))
         # Bias
         self.b = 0.2*(np.random.normal(0, 1, (self.n, 1)))
         # Initial W (aka W*)
@@ -51,11 +49,11 @@ class Conceptor:
         # The conceptors for the signals
         self.conceptors = list()
         # Alpha value
-        self.alpha = 10
+        self.alpha = aperture
 
-        # For testing purposes
-        self.load_patterns()
-        self.compute_conceptors()
+        # # For testing purposes
+        # self.load_patterns()
+        # self.compute_conceptors()
 
     def __compute_Wstar(self) -> np.ndarray:
         """
@@ -85,8 +83,8 @@ class Conceptor:
 
             Wout = ((XX' + e_out I_NxN)^-1XP')'
 
-            temp_rec is a state activation record as a matrix:
-                temp_rec = [ x_0 x_1 x_2 ... x_L]
+            X is a state activation record as a matrix:
+                X = [ x_0 x_1 x_2 ... x_L]
 
             P is a concatenation of the signal values:
                 P = [ p_0 p_1 p_2 ... p_L]
@@ -106,8 +104,14 @@ class Conceptor:
         # Generate scaled identity matrix
         scaled_identity = 0.01*np.identity(self.n)
 
-        temp_out = (np.linalg.inv(X@X.T + scaled_identity)@X@self.P.T)
-        return temp_out.reshape((1, 100))
+        if self.dim == 1:
+            temp_out = (np.linalg.inv(X@X.T + scaled_identity)@X@self.P.T)
+            return temp_out.reshape((self.dim, self.n))
+
+        else:
+            temp_out = (np.linalg.inv(X@X.T + scaled_identity)@X@self.P).T
+            return temp_out
+
 
     def save_state_response(self) -> None:
         """
@@ -200,9 +204,12 @@ class Conceptor:
         # For results
         res = list()
 
+        # To not be recomputed
+        Xs = self.create_x_i()
+
         # Create R_i
-        for x in self.create_x_i():
-            temp = (x@x.T)/(self.L - self.washout)
+        for idx in range(len(Xs)):
+            temp = (Xs[idx]@Xs[idx].T)/(self.sig[idx].shape[0] - self.washout)
             res.append(temp)
 
         return res
@@ -281,6 +288,7 @@ class Conceptor:
 
         :return: None.
         """
+
         # Get x, x_tilde and r
         x_tilde = np.concatenate(self.create_x_tilde_i(), axis=1)
         x = np.concatenate(self.create_x_i(), axis=1)
@@ -371,7 +379,7 @@ class Conceptor:
 
         return reg_sig
 
-    def drive(self, p: (int | float)) -> None:
+    def drive(self, p: float) -> None:
         """
         Computes the next state based on a driver/signal and the initial connection matrix.
 
@@ -405,25 +413,70 @@ class Conceptor:
         """
         return self.Wout@self.x
 
+    # def get_new_sig(self):
+    #     if not self.conceptors:
+    #         self.compute_conceptors()
+    #
+    #
+    #
+    #     self.sig.append(smth)
+    #
+    #     """
+    #     Saves and computes a state response based on a saved signal.
+    #     The washout period is needed to have the RNN adjust itself to the new signal and its dynamics.
+    #
+    #     :return: None.
+    #     """
+    #     # Initialise P as a one-dimensional matrix without the washout period.
+    #     self.P = np.asarray(self.sig[0])[self.washout:]
+    #     # Initialise the results as a list
+    #     res = list()
+    #
+    #     # For each other signal
+    #     for i in range(1, len(self.sig)):
+    #         # Add the signal without the washout period to P
+    #         self.P = np.concatenate((self.P, np.asarray(self.sig[i])[self.washout:]), axis=0)
+    #
+    #     # For each signal
+    #     for sig in self.sig:
+    #         # Reset x(n)
+    #         self.x = np.zeros((self.n, 1))
+    #
+    #         # Reset X' to x(0)
+    #         x_prime = self.x
+    #
+    #         # For each sample in the signal
+    #         for idx in range(len(sig)):
+    #             # Drive the RNN with this value
+    #             self.drive(sig[idx])
+    #             # And save the state activation in x_prime
+    #             x_prime = np.concatenate((x_prime, self.x), axis=1)
+    #
+    #         # Save x_prime in the state response
+    #         res.append(x_prime)
+    #
+    #     # Save the state response in the Object
+    #     self.state_response = res
+
+    def reset(self):
+        self.x = np.zeros((self.n, 1))
+
     def vis_conceptor(self):
         res_2 = self.regenerate_signals()
         rs = self.create_r_i()
 
-        # Conceptor output vs original signal
+        # Conceptors output vs original signal
         ax = plt.subplot(2, 2, 1)
         pacing = self.L
-        # np.linspace(100, 200, pacing)
         space = self.space
-        # [self.L - pacing:]
         y1 = res_2[1]
         y2 = self.sig[1]
-        # temp = self.shift_max(self.sig[1], self.reg_sig_with_conc(1))
         y3 = self.reg_sig_with_conc(1)
         y4 = self.reg_sig_with_conc_not_loaded(1)
         ax.plot(space, y1, label="W_out", linestyle='dashed', color="black")
         ax.plot(space, y2, label="Signal", color="grey", alpha=0.6)
-        ax.plot(space, y3, label="Conceptor", color="blue", alpha=0.5, linestyle="dashdot")
-        ax.plot(space, y4, label="Unloaded Conceptor", color="green", alpha=0.5)
+        ax.plot(space, y3, label="Conceptors", color="blue", alpha=0.5, linestyle="dashdot")
+        ax.plot(space, y4, label="Unloaded Conceptors", color="green", alpha=0.5)
         nrmse1 = self.nrmse(y1.reshape(y1.shape[0], 1), y2.reshape(y2.shape[0], 1))
         nrmse2 = self.nrmse(y3.reshape(y3.shape[0], 1), y2.reshape(y2.shape[0], 1))
         nrmse3 = self.nrmse(y4.reshape(y4.shape[0], 1), y2.reshape(y2.shape[0], 1))
@@ -484,6 +537,22 @@ class Conceptor:
 
         plt.show()
 
+    # def vis_attack(self):
+    #     ax = plt.subplot(2, 2, 1)
+    #     ax.
+
 if __name__ == "__main__":
-    C = Conceptor()
+    space = np.linspace(-200, 200, 2001)
+    signals = [
+            np.sin(np.sqrt(2)*space),
+            np.sin(space),
+            np.sin(2*space),
+            np.sin(3*space)
+        ]
+
+    C = Conceptor(signals, n=100, washout=500, aperture=10, plot_start=-200, plot_end=200, max_length=2001, dim=1)
+
+    C.load_patterns()
     C.vis_conceptor()
+
+
