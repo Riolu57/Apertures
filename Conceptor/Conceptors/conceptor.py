@@ -1,6 +1,7 @@
-
-import numpy as np
+import jax.numpy as np
 import matplotlib.pyplot as plt
+import jax.random as random
+import random as py_random
 
 
 class Conceptor:
@@ -11,11 +12,13 @@ class Conceptor:
     TODO: Add variable n
     TODO: Add variable signals
     """
-    __slots__ = ("L", "start", "end", "space", "sig", "n", "washout", "P", "x", "Win", "Wout", "Wstar", "W", "b",
+    __slots__ = ("key", "L", "start", "end", "space", "sig", "n", "washout", "P", "x", "Win", "Wout", "Wstar", "W", "b",
                  "state_response", "conceptors", "alpha", "dim")
 
     def __init__(self, signals, /, *, n=100, washout=100, aperture=10, plot_start=0, plot_end=100, max_length=100,
                  dim=1):
+        # For jax random stuff
+        self.key = random.PRNGKey(42)
         # Length of signal and records
         self.L = max_length
         # For signal and plotting purposes
@@ -35,9 +38,9 @@ class Conceptor:
         # Current state activation
         self.x = np.zeros((self.n, 1))
         # Input weights
-        self.Win = 1.5*(np.random.normal(0, 1, (self.n, dim)))
+        self.Win = 1.5*(random.normal(self.key, (self.n, dim)))
         # Bias
-        self.b = 0.2*(np.random.normal(0, 1, (self.n, 1)))
+        self.b = 0.2*(random.normal(self.key, (self.n, 1)))
         # Initial W (aka W*)
         self.Wstar = self.__compute_Wstar()
         # Actual W
@@ -63,12 +66,13 @@ class Conceptor:
         :return: A spare matrix with density ~10% and spectral radius 1.5
         """
         # Initialize connection matrix as 0 matrix
-        w = np.random.normal(0, 1, (self.n, self.n))
+        w = np.zeros((self.n, self.n))
 
         # For 10% of the entries replace with a value from a N(0,1) distribution
         for _ in range(int(0.1*(self.n**2))):
-            cord = np.random.choice(self.n, size=2, replace=True)
-            w[(cord[0], cord[1])] = np.random.normal(0, 1)
+            cord_1 = py_random.randrange(self.n)
+            cord_2 = py_random.randrange(self.n)
+            w = w.at[(cord_1, cord_2)].set(py_random.gauss(0, 1))
 
         # Ensure 1.5 spectral radius
         w = 1.5*w/max(abs(np.linalg.eigvals(w)))

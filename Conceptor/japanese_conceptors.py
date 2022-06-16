@@ -1,7 +1,7 @@
 import pickle
 from enum import Enum
 
-import numpy as np
+import jax.numpy as np
 
 from Conceptors.multi_dim_conceptor import MultiDimConceptor
 
@@ -16,7 +16,7 @@ class UnPickType(Enum):
 
 
 def unPick(type):
-    f_path = "U:/#BP/Pickles/"
+    f_path = "../Pickles/"
     x = type.value%2 == 1
     if type.value in [1, 2]:
         f_path += f"train_{'x' if x else 'y'}"
@@ -49,12 +49,13 @@ tot_len = 0
 
 for idx in range(0, 9, 1):
     temp = train_x[train_x.speaker_count == idx].filter(regex="coeff*").to_numpy()
+    temp = np.asarray(temp, dtype='float32')
     max_len = len(temp) if len(temp) > max_len else max_len
     min_len = len(temp) if len(temp) < min_len else min_len
     tot_len += len(temp)
     data.append(temp)
     x = np.asarray([0, 0, 0, 0, 0, 0, 0, 0, 0])
-    x[idx] = 1
+    x = x.at[idx].set(1)
     out.append(np.tile(x, (len(temp), 1)))
 
 print(min_len, tot_len)
@@ -72,16 +73,17 @@ M = MultiDimConceptor(
 
 print("Conceptor!")
 
-
-
-
 M.reset()
 
-print("Conceptor reset!")
-inp = val_x[val_x.speaker_count == 0].filter(regex="coeff*").to_numpy()[0].reshape(12, 1)
-M.drive(inp)
-print("Conceptor driven!")
-res = M.out()
-print(res)
-print(np.where(res == max(res))[0][0])
+def lol():
+    print("Conceptor reset!")
+    inp = val_x[val_x.speaker_count == 0].filter(regex="coeff*").to_numpy()[0].reshape(12, 1)
+    M.drive(inp)
+    print("Conceptor driven!")
+    res = M.out()
+    print(res)
+    print(np.where(res == max(res))[0][0])
+
+
+M.grad_descent(train_x, val_x, 5, 5)
 
